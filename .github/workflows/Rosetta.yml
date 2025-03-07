@@ -1,9 +1,9 @@
-name: macOS Rosetta CPU Info (With x86 Execution Test)
+name: Verify sysctl Behavior in GitHub Actions
 
 on: [push]
 
 jobs:
-  cpu-info:
+  sysctl-test:
     runs-on: macos-latest
     steps:
       - name: Install Rosetta (if needed)
@@ -15,7 +15,14 @@ jobs:
             echo "Running on Intel, no Rosetta needed."
           fi
 
-      - name: Compile x86-64 Binary
+      - name: Run sysctl on Native ARM64
+        run: |
+          echo "=== Running sysctl -a (ARM64) ==="
+          sysctl -a > native_sysctl.txt || echo "sysctl failed!"
+          echo "=== Running sysctl -n sysctl.proc_translated (ARM64) ==="
+          sysctl -n sysctl.proc_translated || echo "sysctl.proc_translated not available!"
+
+      - name: Compile and Run x86-64 Binary
         run: |
           echo "=== Compiling x86-64 Test Program ==="
           cat <<EOF > hello.c
@@ -28,15 +35,21 @@ jobs:
           
           echo "=== Compiling Using x86-64 Mode ==="
           clang -target x86_64-apple-macos -o hello_x86 hello.c || echo "Failed to compile x86-64 binary!"
-
+          
           echo "=== Checking Binary Architecture ==="
           file hello_x86 || echo "x86-64 binary missing!"
 
-      - name: Run x86-64 Binary Using Rosetta
+          echo "=== Running x86-64 Binary Using Rosetta ==="
+          arch -x86_64 ./hello_x86 || echo "Failed to execute x86-64 binary!"
+
+      - name: Run sysctl on Rosetta x86-64
         run: |
-          echo "=== Attempting to Execute x86-64 Binary ==="
-          if arch -x86_64 ./hello_x86; then
-            echo "SUCCESS: x86-64 execution works under Rosetta!"
-          else
-            echo "FAILED: x86-64 execution does NOT work!"
-          fi
+          echo "=== Running sysctl -a (Rosetta x86-64) ==="
+          arch -x86_64 sysctl -a > rosetta_sysctl.txt || echo "sysctl failed in Rosetta!"
+          echo "=== Running sysctl -n sysctl.proc_translated (Rosetta x86-64) ==="
+          arch -x86_64 sysctl -n sysctl.proc_translated || echo "sysctl.proc_translated not available under Rosetta!"
+
+      - name: Compare sysctl Outputs
+        run: |
+          echo "=== Comparing sysctl outputs (ARM64 vs Rosetta x86-64) ==="
+          diff -u native_sysctl.txt rosetta_sysctl.txt || echo "Differences detected!"
