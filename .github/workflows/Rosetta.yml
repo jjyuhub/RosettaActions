@@ -1,0 +1,17 @@
+name: macOS CPU Info (Native + Rosetta)
+
+on: [push]
+
+jobs:
+  cpu-info:
+    runs-on: macos-latest
+    steps:
+      - name: Print CPU info (Native + Rosetta)
+        run: |
+          echo "=== Native CPU Info ==="
+          arch
+          /usr/sbin/sysctl -a | grep machdep.cpu
+
+          echo -e "\n=== Rosetta (x86_64) CPU Info ==="
+          arch -x86_64 arch
+          arch -x86_64 /usr/sbin/sysctl -a | grep machdep.cpu
