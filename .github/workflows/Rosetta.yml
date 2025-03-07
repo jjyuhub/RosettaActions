@@ -1,4 +1,4 @@
-name: macOS CPU Info (Native + Rosetta)
+name: macOS Rosetta CPU Info (With x86 Execution Test)
 
 on: [push]
 
@@ -6,71 +6,37 @@ jobs:
   cpu-info:
     runs-on: macos-latest
     steps:
-      - name: Dump Initial System Info
-        run: |
-          echo "=== Checking System Architecture ==="
-          uname -m
-          sysctl -n machdep.cpu.brand_string
-          sysctl -a | grep machdep.cpu
-
-          echo "=== Checking System Version ==="
-          sw_vers
-          system_profiler SPHardwareDataType
-
-          echo "=== Checking Available Translations ==="
-          ls -l /usr/libexec/rosetta/
-          file /usr/libexec/rosetta/*
-          echo "=== Checking if Rosetta is Already Installed ==="
-          if [[ -f "/usr/libexec/rosetta/oahd" ]]; then
-            echo "Rosetta is already installed!"
-          else
-            echo "Rosetta is NOT installed!"
-          fi
-
-      - name: Force Rosetta Installation (Even if Installed)
+      - name: Install Rosetta (if needed)
         run: |
           if [[ "$(uname -m)" == "arm64" ]]; then
-            echo "Forcing Rosetta reinstallation..."
-            sudo softwareupdate --install-rosetta --agree-to-license --verbose
+            echo "Apple Silicon detected, attempting to install Rosetta..."
+            sudo softwareupdate --install-rosetta --agree-to-license
           else
             echo "Running on Intel, no Rosetta needed."
           fi
 
-      - name: Verify Rosetta Installation
+      - name: Compile x86-64 Binary
         run: |
-          echo "=== Checking Rosetta Binary ==="
-          ls -la /usr/libexec/rosetta/ || echo "Rosetta directory not found!"
-          file /usr/libexec/rosetta/* || echo "Rosetta binaries missing!"
+          echo "=== Compiling x86-64 Test Program ==="
+          cat <<EOF > hello.c
+          #include <stdio.h>
+          int main() {
+              printf("Hello from x86-64!\n");
+              return 0;
+          }
+          EOF
+          
+          echo "=== Compiling Using x86-64 Mode ==="
+          clang -target x86_64-apple-macos -o hello_x86 hello.c || echo "Failed to compile x86-64 binary!"
 
-          echo "=== Checking Running Processes ==="
-          ps aux | grep oahd | grep -v grep || echo "Rosetta process (oahd) is NOT running!"
+          echo "=== Checking Binary Architecture ==="
+          file hello_x86 || echo "x86-64 binary missing!"
 
-          echo "=== Checking Rosetta Translation Capabilities ==="
-          arch -x86_64 true && echo "Rosetta is working!" || echo "Rosetta is NOT working!"
-
-      - name: Fix Rosetta Permissions (If Needed)
+      - name: Run x86-64 Binary Using Rosetta
         run: |
-          echo "=== Checking Permissions ==="
-          sudo chmod -R 755 /usr/libexec/rosetta || echo "Failed to set Rosetta permissions!"
-          sudo xattr -rc /usr/libexec/rosetta || echo "Failed to reset extended attributes!"
-
-      - name: Print CPU Info (Native + Rosetta)
-        run: |
-          echo "=== Native CPU Info ==="
-          arch
-          uname -a
-          sysctl -a | grep machdep.cpu
-
-          echo "=== Attempting Rosetta Execution ==="
-          if arch -x86_64 true 2>/dev/null; then
-            echo -e "\n=== Rosetta (x86_64) CPU Info ==="
-            arch -x86_64 arch
-            arch -x86_64 uname -a
-            arch -x86_64 sysctl -a | grep machdep.cpu
+          echo "=== Attempting to Execute x86-64 Binary ==="
+          if arch -x86_64 ./hello_x86; then
+            echo "SUCCESS: x86-64 execution works under Rosetta!"
           else
-            echo "Rosetta is installed but cannot execute x86_64 commands!"
-            echo "Possible causes:"
-            echo "1. Rosetta is installed but disabled in this GitHub Actions environment."
-            echo "2. The macOS GitHub runner is not allowing x86 emulation."
-            echo "3. The Rosetta installation is corrupted. Try restarting the VM (not possible in Actions)."
+            echo "FAILED: x86-64 execution does NOT work!"
           fi
