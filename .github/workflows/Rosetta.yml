@@ -6,12 +6,24 @@ jobs:
   cpu-info:
     runs-on: macos-latest
     steps:
-      - name: Print CPU info (Native + Rosetta)
+      - name: Install Rosetta (if needed)
+        run: |
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            sudo softwareupdate --install-rosetta --agree-to-license
+          else
+            echo "Running on Intel, no Rosetta needed."
+          fi
+
+      - name: Print CPU Info (Native + Rosetta)
         run: |
           echo "=== Native CPU Info ==="
           arch
           /usr/sbin/sysctl -a | grep machdep.cpu
 
-          echo -e "\n=== Rosetta (x86_64) CPU Info ==="
-          arch -x86_64 arch
-          arch -x86_64 /usr/sbin/sysctl -a | grep machdep.cpu
+          if arch -x86_64 true 2>/dev/null; then
+            echo -e "\n=== Rosetta (x86_64) CPU Info ==="
+            arch -x86_64 arch
+            arch -x86_64 /usr/sbin/sysctl -a | grep machdep.cpu
+          else
+            echo "Rosetta is not available on this system."
+          fi
